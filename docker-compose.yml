@@ -1,0 +1,71 @@
+services:
+  asterisk:
+    image: ${ASTERISK_IMAGE}
+    container_name: asterisk
+    hostname: asterisk
+    restart: unless-stopped
+    # Bridge networking (works on Docker Desktop for Mac/Windows and Linux).
+    # For Linux-only deployments where you need real SIP/RTP without NAT
+    # rewriting, you can switch to `network_mode: host` and drop the
+    # `ports` block below — but that will NOT work on Docker Desktop.
+    ports:
+      - "5060:5060/udp"                # SIP signaling (UDP — softphones, direct-IP Twilio)
+      - "5060:5060/tcp"                # SIP signaling (TCP — required for ngrok tunneling)
+      - "10000-10100:10000-10100/udp"  # RTP media
+      - "${ARI_HTTP_PORT}:8088/tcp"    # ARI (HTTP)
+      - "${AMI_PORT}:5038/tcp"         # AMI
+    volumes:
+      - ./asterisk-config:/etc/asterisk:ro
+      # Custom sound files are mounted into Asterisk's sounds dir. Reference
+      # them from ARI/dialplan as `sound:custom/<basename>` (no extension).
+      - ./sounds/custom:/var/lib/asterisk/sounds/custom:ro
+      - asterisk-logs:/var/log/asterisk
+    networks:
+      - pbx-net
+    healthcheck:
+      # ARI requires auth, so a 401 from /ari/asterisk/info still proves the
+      # HTTP transport is listening. andrius/asterisk ships curl (no wget).
+      test: ["CMD-SHELL", "code=$$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8088/ari/asterisk/info); [ \"$$code\" = 200 ] || [ \"$$code\" = 401 ]"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  node-app:
+    build:
+      context: ./node-app
+    container_name: node-app
+    restart: unless-stopped
+    depends_on:
+      asterisk:
+        condition: service_healthy
+    environment:
+      # Inside the pbx-net network, Asterisk is reachable by service name.
+      ASTERISK_HOST: asterisk
+      ARI_URL: http://asterisk:8088
+      ARI_USER: ${ARI_USER}
+      ARI_PASSWORD: ${ARI_PASSWORD}
+      ARI_APP_NAME: ${ARI_APP_NAME}
+      AMI_HOST: asterisk
+      AMI_PORT: "5038"
+      AMI_USER: ${AMI_USER}
+      AMI_PASSWORD: ${AMI_PASSWORD}
+      SIP_EXTENSION: ${SIP_EXTENSION}
+      PORT: ${NODE_APP_PORT}
+      # Twilio (Node only needs the DID + verified-numbers guardrail; the
+      # trunk credentials live in Asterisk's pjsip.conf, not the Node app).
+      TWILIO_DID: ${TWILIO_DID}
+      TWILIO_VERIFIED_NUMBERS: ${TWILIO_VERIFIED_NUMBERS}
+      # Sound URI (no extension) played to inbound Twilio callers.
+      INBOUND_GREETING_SOUND: ${INBOUND_GREETING_SOUND:-custom/greeting}
+    ports:
+      - "${NODE_APP_PORT}:${NODE_APP_PORT}"
+    networks:
+      - pbx-net
+
+networks:
+  pbx-net:
+    driver: bridge
+
+volumes:
+  asterisk-logs:

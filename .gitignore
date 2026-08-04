@@ -1,0 +1,14 @@
+# Secrets — never commit
+.env
+node-app/.env
+
+# Node
+node-app/node_modules/
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+
+# Logs (asterisk-logs is a docker volume, but if anyone bind-mounts locally)
+*.log
