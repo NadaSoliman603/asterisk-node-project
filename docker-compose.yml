@@ -30,6 +30,14 @@ services:
       timeout: 5s
       retries: 20
       start_period: 30s
+    # Cap json-file log growth. A crash-loop or verbose Asterisk can otherwise
+    # fill /var/lib/docker/containers/... to tens of GB — took prod to 100%
+    # disk once. 3 × 100 MB = 300 MB max per container, then rotate.
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "3"
 
   node-app:
     build:
@@ -80,6 +88,12 @@ services:
       - "${NODE_APP_PORT}:${NODE_APP_PORT}"
     networks:
       - pbx-net
+    # Same log cap as asterisk — see comment above.
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "3"
 
 networks:
   pbx-net:
