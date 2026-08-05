@@ -1,10 +1,10 @@
-'use strict';
-
-require('dotenv').config();
-
-const http = require('http');
-const ari = require('./ari');
-const ami = require('./ami');
+import 'dotenv/config';
+import http from 'node:http';
+import * as ari from './ari.js';
+import * as ami from './ami.js';
+import { textToSpeech } from './openaiRealtime.js';
+import { OPENAI_REALTIME_API_KEY } from './constants/index.js';
+import * as aiVoiceBridge from './aiVoiceBridge.js';
 
 const config = {
   ari: {
@@ -65,6 +65,11 @@ function startHttpServer() {
         status: ari.isConnected() && ami.isConnected() ? 'ok' : 'degraded',
         ari: { connected: ari.isConnected(), app: ari.getAppName() },
         ami: { connected: ami.isConnected() },
+        ai: {
+          realtimeKey: Boolean(OPENAI_REALTIME_API_KEY),
+          voiceMode: (process.env.AI_VOICE_ENABLED || '').toLowerCase() || 'off',
+          bridge: aiVoiceBridge.getStatus(),
+        },
         twilio: {
           did: config.twilio.did || null,
           verifiedCount: config.twilio.verified.length,
@@ -72,6 +77,47 @@ function startHttpServer() {
       };
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(body, null, 2));
+      return;
+    }
+
+    // ---- /debug/tts (Phase 2 pipeline proof) ---------------------------
+    // GET /debug/tts?text=hello           → audio/wav
+    // GET /debug/tts?text=hello&voice=sage
+    // Returns 503 when OPENAI_REALTIME_API_KEY is not set.
+    // Not on the call path — this is here to prove the WS + PCM wiring works.
+    if (req.method === 'GET' && req.url && req.url.startsWith('/debug/tts')) {
+      if (!OPENAI_REALTIME_API_KEY) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: 'OPENAI_REALTIME_API_KEY not set — /debug/tts unavailable',
+          })
+        );
+        return;
+      }
+      const parsed = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const text = parsed.searchParams.get('text');
+      const voice = parsed.searchParams.get('voice') || undefined;
+      if (!text) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'query param "text" is required' }));
+        return;
+      }
+      try {
+        const { wav, transcript, sampleRate } = await textToSpeech(text, { voice });
+        res.writeHead(200, {
+          'Content-Type': 'audio/wav',
+          'Content-Length': wav.length,
+          'X-Realtime-Transcript': encodeURIComponent(transcript || ''),
+          'X-Realtime-Sample-Rate': String(sampleRate),
+        });
+        res.end(wav);
+      } catch (err) {
+        console.error('[/debug/tts] failed:', err.message);
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
       return;
     }
 

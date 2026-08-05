@@ -1,7 +1,5 @@
-'use strict';
-
-const crypto = require('crypto');
-const AsteriskManager = require('asterisk-manager');
+import crypto from 'node:crypto';
+import AsteriskManager from 'asterisk-manager';
 
 const state = {
   connected: false,
@@ -17,6 +15,7 @@ function log(...args) {
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
 
 async function connectWithRetry({ host, port, user, password }) {
   const maxAttempts = 30;
@@ -105,7 +104,7 @@ function registerHandlers(manager) {
   });
 }
 
-async function start(config) {
+export async function start(config) {
   const manager = await connectWithRetry(config);
   state.manager = manager;
   state.connected = true;
@@ -132,7 +131,7 @@ function awaitOriginateResponse(actionId, timeoutMs) {
  * Rings PJSIP/<extension> in from-internal and, on answer, sends the call
  * to dialplan exten 200 → Stasis. Kept for local softphone-loopback testing.
  */
-async function originateTestCall({ extension, context = 'from-internal', exten = '200' }) {
+export async function originateTestCall({ extension, context = 'from-internal', exten = '200' }) {
   if (!state.manager) throw new Error('AMI not connected');
   const actionId = crypto.randomUUID();
   const responsePromise = awaitOriginateResponse(actionId, 30_000);
@@ -174,7 +173,7 @@ async function originateTestCall({ extension, context = 'from-internal', exten =
  * verified-number allowlist enforcement — this function does not
  * second-guess the target. Keep the guardrail at the API layer.
  */
-async function placeCall({
+export async function placeCall({
   toNumber,
   fromTrunk = 'twilio-trunk',
   callerId = null,
@@ -209,8 +208,6 @@ async function placeCall({
   return responsePromise;
 }
 
-function isConnected() {
+export function isConnected() {
   return state.connected;
 }
-
-module.exports = { start, isConnected, originateTestCall, placeCall };

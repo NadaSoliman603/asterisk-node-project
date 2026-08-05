@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Node.js integration with Asterisk over ARI + AMI",
   "private": true,
+  "type": "module",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js"
@@ -11,8 +12,13 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1010.0",
+    "@strands-agents/sdk": "0.6.0",
     "ari-client": "^2.2.0",
     "asterisk-manager": "^0.2.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "fuse.js": "^7.4.2",
+    "ws": "^8.21.2",
+    "zod": "^4.3.6"
   }
 }

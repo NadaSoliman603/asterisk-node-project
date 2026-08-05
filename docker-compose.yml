@@ -58,6 +58,24 @@ services:
       TWILIO_VERIFIED_NUMBERS: ${TWILIO_VERIFIED_NUMBERS}
       # Sound URI (no extension) played to inbound Twilio callers.
       INBOUND_GREETING_SOUND: ${INBOUND_GREETING_SOUND:-custom/greeting}
+      # AI voice bridge (Phase 3+): 'echo' → RTP loopback test, 'true' → real
+      # AI (Phase 4). Anything else / unset → play greeting.wav (default).
+      AI_VOICE_ENABLED: ${AI_VOICE_ENABLED:-}
+      # Hostname Asterisk uses to reach node-app for External Media RTP.
+      # Inside compose this is the service name; Docker DNS handles the rest.
+      AI_MEDIA_HOSTNAME: ${AI_MEDIA_HOSTNAME:-node-app}
+      EXTERNAL_MEDIA_RTP_PORT_MIN: ${EXTERNAL_MEDIA_RTP_PORT_MIN:-10500}
+      EXTERNAL_MEDIA_RTP_PORT_MAX: ${EXTERNAL_MEDIA_RTP_PORT_MAX:-10599}
+      # OpenAI Realtime (Phase 2+): required for /debug/tts and AI calls.
+      OPENAI_REALTIME_API_KEY: ${OPENAI_REALTIME_API_KEY:-}
+      OPENAI_REALTIME_MODEL: ${OPENAI_REALTIME_MODEL:-gpt-realtime}
+      REALTIME_VOICE: ${REALTIME_VOICE:-alloy}
+      REALTIME_SPEED: ${REALTIME_SPEED:-1.1}
+      TRANSCRIBE_LANGUAGE: ${TRANSCRIBE_LANGUAGE:-ar}
+      # Per-call guardrails (Phase 4).
+      AI_MAX_CALL_SECONDS: ${AI_MAX_CALL_SECONDS:-600}
+      AI_MAX_TOOL_CALLS_PER_CALL: ${AI_MAX_TOOL_CALLS_PER_CALL:-10}
+      AI_GREETING_INSTRUCTION: ${AI_GREETING_INSTRUCTION:-}
     ports:
       - "${NODE_APP_PORT}:${NODE_APP_PORT}"
     networks:

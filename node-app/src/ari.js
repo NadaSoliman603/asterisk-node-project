@@ -1,12 +1,17 @@
-'use strict';
-
-const ariClient = require('ari-client');
+import ariClient from 'ari-client';
+import * as aiVoiceBridge from './aiVoiceBridge.js';
 
 // Configurable greeting played to inbound Twilio callers.
 // Format: `<basename>` — no `sound:` prefix, no file extension.
 // Files resolve from /var/lib/asterisk/sounds/<name>.<ext> inside the
 // container. The compose stack bind-mounts ./sounds/custom → …/sounds/custom.
 const INBOUND_GREETING = process.env.INBOUND_GREETING_SOUND || 'custom/greeting';
+
+// Feature flag for the AI voice path. Values:
+//   ''      / 'false' → play greeting.wav (current behaviour)
+//   'echo'            → RTP echo test through aiVoiceBridge (Phase 3)
+//   'true'            → full AI (Phase 4, not built yet)
+const AI_VOICE_ENABLED = (process.env.AI_VOICE_ENABLED || '').toLowerCase();
 
 const state = {
   connected: false,
@@ -76,7 +81,7 @@ function registerHandlers(client, appName) {
         `from=${from} to=${to} args=${JSON.stringify(event.args || [])}`
     );
 
-    // Route by call kind. Kept as explicit branches per the spec — do NOT
+    // Route by call kind. Kept as explicit sbranches per the spec — do NOT
     // collapse into a single generic handler.
     if (kind === 'twilio-inbound') {
       handleInboundTwilio(channel, { from, to }).catch((e) =>
@@ -104,9 +109,34 @@ function registerHandlers(client, appName) {
   }
 
   async function handleInboundTwilio(channel, meta) {
-    // Inbound Twilio call → answer, play greeting, wait for PlaybackFinished,
-    // then hang up. Each step is guarded so a failure at one stage still
-    // leaves the channel in a defined state (hung up, not orphaned).
+    // Phase 4: full AI conversation. The bridge owns answer(), ExternalMedia,
+    // OpenAI Realtime WS, tool dispatch, memory, and all cleanup on StasisEnd.
+    if (AI_VOICE_ENABLED === 'true') {
+      try {
+        await aiVoiceBridge.startAiCall(client, appName, channel, meta);
+      } catch (err) {
+        log(`[twilio-inbound] AI bridge failed:`, err.message);
+        await safeHangup(channel, 'ai-bridge-failed');
+      }
+      return;
+    }
+
+    // Phase 3: RTP echo test through aiVoiceBridge — caller hears themselves.
+    // The bridge module owns answer(), the External Media channel, the mixing
+    // Bridge, the UDP socket, and all cleanup on StasisEnd.
+    if (AI_VOICE_ENABLED === 'echo') {
+      try {
+        await aiVoiceBridge.startEchoCall(client, appName, channel, meta);
+      } catch (err) {
+        log(`[twilio-inbound] echo bridge failed:`, err.message);
+        await safeHangup(channel, 'echo-bridge-failed');
+      }
+      return;
+    }
+
+    // Default path — play the static greeting, wait for it to finish, hang up.
+    // Each step is guarded so a failure at one stage still leaves the channel
+    // in a defined state (hung up, not orphaned).
     log(`[twilio-inbound] answering call from ${meta.from} → DID ${meta.to}`);
 
     // 1. Answer
@@ -204,7 +234,7 @@ function registerHandlers(client, appName) {
   });
 }
 
-async function start(config) {
+export async function start(config) {
   const client = await connectWithRetry(config);
   state.client = client;
   state.appName = config.appName;
@@ -218,12 +248,10 @@ async function start(config) {
   return client;
 }
 
-function isConnected() {
+export function isConnected() {
   return state.connected;
 }
 
-function getAppName() {
+export function getAppName() {
   return state.appName;
 }
-
-module.exports = { start, isConnected, getAppName };
