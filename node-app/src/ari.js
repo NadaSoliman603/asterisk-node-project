@@ -98,13 +98,13 @@ function registerHandlers(client, appName) {
     handleLocal(channel).catch((e) => log('local handler error:', e.message));
   });
 
-  async function safeHangup(channel, reason) {
+  async function safeHangup(channel, reason, label = 'twilio-inbound') {
     try {
       await channel.hangup();
-      log(`[twilio-inbound] hung up channel=${channel.name} reason=${reason}`);
+      log(`[${label}] hung up channel=${channel.name} reason=${reason}`);
     } catch (err) {
       // Channel may already be gone (caller hung up first) — that's fine.
-      log(`[twilio-inbound] hangup error (${reason}):`, err.message);
+      log(`[${label}] hangup error (${reason}):`, err.message);
     }
   }
 
@@ -191,20 +191,56 @@ function registerHandlers(client, appName) {
 
   async function handleOutboundTwilio(channel, meta) {
     // Our own Originate answered by the PSTN callee. The channel is already
-    // "up" from the callee's perspective; play a short prompt to prove audio
-    // path, then hang up. Real app would bridge this to another channel,
-    // stream TTS, etc.
+    // "up" from the callee's perspective, so — unlike the inbound path — we do
+    // NOT call answer(). Otherwise mirror inbound: guarded playback, wait for
+    // PlaybackFinished, and handle PlaybackFailed / the callee dropping mid-play.
     log(`[twilio-outbound] callee answered: ${meta.to || channel.name}`);
-    const playback = await channel.play({ media: 'sound:hello-world' });
-    playback.once('PlaybackFinished', () => {
-      channel.hangup().catch((e) => log('hangup error:', e.message));
+
+    // 1. Start playback
+    const media = `sound:${INBOUND_GREETING}`;
+    let playback;
+    try {
+      log(`[twilio-outbound] playing media=${media}`);
+      playback = await channel.play({ media });
+    } catch (err) {
+      log(`[twilio-outbound] play(${media}) error:`, err.message);
+      await safeHangup(channel, 'play-failed', 'twilio-outbound');
+      return;
+    }
+    log(`[twilio-outbound] playback started id=${playback.id} media=${media}`);
+
+    // 2. Wait for PlaybackFinished (do NOT use setTimeout — length varies).
+    //    Also handle PlaybackFailed and the callee hanging up mid-playback.
+    const cleanup = () => {
+      playback.removeAllListeners('PlaybackFinished');
+      playback.removeAllListeners('PlaybackFailed');
+      channel.removeAllListeners('StasisEnd');
+    };
+
+    playback.once('PlaybackFinished', async () => {
+      cleanup();
+      log(`[twilio-outbound] playback finished id=${playback.id} — hanging up`);
+      await safeHangup(channel, 'playback-finished', 'twilio-outbound');
+    });
+
+    playback.once('PlaybackFailed', async (evt) => {
+      cleanup();
+      log(`[twilio-outbound] playback FAILED id=${playback.id} evt=${JSON.stringify(evt && evt.playback)}`);
+      await safeHangup(channel, 'playback-failed', 'twilio-outbound');
+    });
+
+    // If the callee drops during playback, StasisEnd fires — no hangup needed
+    // (channel is already gone) but we should stop listening for playback events.
+    channel.once('StasisEnd', () => {
+      cleanup();
+      log(`[twilio-outbound] callee hung up during playback id=${playback.id}`);
     });
   }
 
   async function handleLocal(channel) {
     // Original local-extension behavior — unchanged for the [1000] test path.
     await channel.answer();
-    const playback = await channel.play({ media: 'sound:hello-world' });
+    const playback = await channel.play({ media: `sound:${INBOUND_GREETING}` });
     playback.once('PlaybackFinished', () => {
       channel.hangup().catch((e) => log('hangup error:', e.message));
     });
