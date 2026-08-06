@@ -202,6 +202,7 @@ function registerHandlers(client, appName) {
     // answer() on an already-up outbound channel is a harmless no-op.
     if (AI_VOICE_ENABLED === 'true') {
       try {
+        log(`[twilio-outbound] trigger startAiCall` , client, appName, channel, meta)
         await aiVoiceBridge.startAiCall(client, appName, channel, meta);
       } catch (err) {
         log(`[twilio-outbound] AI bridge failed:`, err.message);
