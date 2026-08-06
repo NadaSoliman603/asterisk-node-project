@@ -72,10 +72,12 @@ export class OpenAIRealtimeSession extends EventEmitter {
   connect() {
     const url = `${this.wsUrl}?model=${encodeURIComponent(this.model)}`;
     return new Promise((resolve, reject) => {
+      // GA Realtime API: authenticate with the bearer token only. The old
+      // `OpenAI-Beta: realtime=v1` header now triggers "The Realtime Beta API
+      // is no longer supported. Please use /v1/realtime for the GA API."
       this.ws = new WebSocket(url, {
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
-          'OpenAI-Beta': 'realtime=v1',
         },
       });
 
