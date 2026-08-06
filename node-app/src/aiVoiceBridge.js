@@ -239,6 +239,7 @@ async function setupCallPlumbing(ariClient, appName, callerChannel, meta, mode) 
     toolRegistry: null,
     userId: null,
   };
+  log(`[${channelId}] setupCallPlumbing state:`, state);
   activeBridges.set(channelId, state);
 
   // 1. Bind UDP socket.
@@ -363,7 +364,9 @@ export async function startAiCall(ariClient, appName, callerChannel, meta = {}) 
 
   let state;
   try {
+    log(`[${channelId}] starting setupCallPlumbing`);
     state = await setupCallPlumbing(ariClient, appName, callerChannel, meta, 'ai');
+    log(`[${channelId}] setupCallPlumbing completed`);
     state.userId = userId;
 
     // Seed the conversation store with the userId BEFORE building context so
