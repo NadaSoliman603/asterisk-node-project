@@ -81,6 +81,17 @@ function registerHandlers(client, appName) {
         `from=${from} to=${to} args=${JSON.stringify(event.args || [])}`
     );
 
+    // ExternalMedia (UnicastRTP/...) channels are the AI/echo bridge's media
+    // transport. aiVoiceBridge creates them, adds them to the mixing bridge,
+    // and owns their whole lifecycle. They MUST NOT be routed to handleLocal —
+    // doing so answers them, plays a file onto the media channel, and hangs
+    // them up, which breaks the bridged audio path (silent AI/echo calls while
+    // the static-greeting path still works). Leave them alone.
+    if (channel.name && channel.name.startsWith('UnicastRTP')) {
+      log(`StasisStart: ignoring ExternalMedia channel=${channel.name} (owned by aiVoiceBridge)`);
+      return;
+    }
+
     // Route by call kind. Kept as explicit sbranches per the spec — do NOT
     // collapse into a single generic handler.
     if (kind === 'twilio-inbound') {
