@@ -58,13 +58,17 @@ const PORT_MAX = parseInt(process.env.EXTERNAL_MEDIA_RTP_PORT_MAX || '10599', 10
 const MAX_CALL_SECONDS = parseInt(process.env.AI_MAX_CALL_SECONDS || '600', 10);
 const MAX_TOOL_CALLS = parseInt(process.env.AI_MAX_TOOL_CALLS_PER_CALL || '10', 10);
 
-// slin16 = signed linear 16-bit PCM @ 16 kHz mono. Asterisk sends 20 ms frames
-// (320 samples = 640 bytes payload). RTP timestamp increments by SAMPLES per
-// packet, not bytes — hence 320.
-const SAMPLE_RATE_HZ = 16000;
+// slin24 = signed linear 16-bit PCM @ 24 kHz mono. Asterisk sends 20 ms frames
+// (480 samples = 960 bytes payload). RTP timestamp increments by SAMPLES per
+// packet, not bytes — hence 480.
+//
+// 24 kHz (not 16 kHz) because the OpenAI Realtime GA API rejects PCM input
+// below 24 kHz: "Invalid 'session.audio.input.format.rate': Expected >= 24000".
+// Keeping Asterisk and OpenAI both at 24 kHz means no resampling on either leg.
+const SAMPLE_RATE_HZ = 24000;
 const FRAME_MS = 20;
-const SAMPLES_PER_FRAME = (SAMPLE_RATE_HZ * FRAME_MS) / 1000; // 320
-const BYTES_PER_FRAME = SAMPLES_PER_FRAME * 2;                // 640 (16-bit)
+const SAMPLES_PER_FRAME = (SAMPLE_RATE_HZ * FRAME_MS) / 1000; // 480
+const BYTES_PER_FRAME = SAMPLES_PER_FRAME * 2;                // 960 (16-bit)
 
 // Server-side VAD is the phone equivalent of push-to-talk: OpenAI detects
 // end-of-utterance from silence. Tunables can migrate to env later.
@@ -271,13 +275,13 @@ async function setupCallPlumbing(ariClient, appName, callerChannel, meta, mode) 
   state.externalMedia = await ariClient.channels.externalMedia({
     app: appName,
     external_host: `${HOSTNAME}:${port}`,
-    format: 'slin16',
+    format: 'slin24',
     encapsulation: 'rtp',
     transport: 'udp',
   });
   log(
     `[${channelId}] bridge=${state.bridge.id} externalMedia=${state.externalMedia.id} ` +
-      `→ ${HOSTNAME}:${port} (slin16)`
+      `→ ${HOSTNAME}:${port} (slin24)`
   );
 
   // 5. Bridge both channels together — audio flows.
@@ -387,8 +391,8 @@ export async function startAiCall(ariClient, appName, callerChannel, meta = {}) 
     log(`[${channelId}] Realtime WS connected`);
 
     // Configure the session for a full duplex phone conversation.
-    // Both audio formats set to PCM16 @ 16 kHz to match slin16 byte-for-byte —
-    // no resampling on either direction of the audio path.
+    // Both audio formats set to PCM16 @ 24 kHz to match slin24 byte-for-byte —
+    // no resampling on either direction of the audio path. (GA rejects < 24 kHz.)
     state.session.sessionUpdate({
       type: 'realtime',
       output_modalities: ['audio'],
