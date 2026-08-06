@@ -193,18 +193,43 @@ function registerHandlers(client, appName) {
 
     // Our own Originate answered by the PSTN callee. The channel is already
     // "up" from the callee's perspective, so — unlike the inbound path — we do
-    // NOT call answer(). Otherwise mirror inbound: guarded playback, wait for
-    // PlaybackFinished, and handle PlaybackFailed / the callee dropping mid-play.
+    // NOT call answer() on the greeting path. Otherwise mirror inbound: the same
+    // three-way branch on AI_VOICE_ENABLED, then guarded playback.
+    log(`[twilio-outbound] starting handleOutboundTwilio (AI_VOICE_ENABLED=${AI_VOICE_ENABLED || '(unset)'})`);
 
+    // Phase 4: full AI conversation. The bridge owns ExternalMedia, OpenAI
+    // Realtime WS, tool dispatch, memory, and cleanup on StasisEnd. Its
+    // answer() on an already-up outbound channel is a harmless no-op.
+    if (AI_VOICE_ENABLED === 'true') {
+      try {
+        await aiVoiceBridge.startAiCall(client, appName, channel, meta);
+      } catch (err) {
+        log(`[twilio-outbound] AI bridge failed:`, err.message);
+        await safeHangup(channel, 'ai-bridge-failed', 'twilio-outbound');
+      }
+      return;
+    }
+
+    // Phase 3: RTP echo test — callee hears themselves.
+    if (AI_VOICE_ENABLED === 'echo') {
+      try {
+        log(`[twilio-outbound] starting echo call`);
+        await aiVoiceBridge.startEchoCall(client, appName, channel, meta);
+      } catch (err) {
+        log(`[twilio-outbound] echo bridge failed:`, err.message);
+        await safeHangup(channel, 'echo-bridge-failed', 'twilio-outbound');
+      }
+      return;
+    }
+
+    // Default path — play the static greeting, wait for it to finish, hang up.
     try{
-      log(`[twilio-outbound] starting handleOutboundTwilio`);
       log(`[twilio-outbound] callee answered: ${meta.to || channel.name}`);
-      log(`[twilio-outbound] media=${INBOUND_GREETING}`);
-  
+
       // 1. Start playback
       const media = `sound:${INBOUND_GREETING}`;
-      log(`[twilio-outbound] media=${INBOUND_GREETING}`);
-  
+      log(`[twilio-outbound] media=${media}`);
+
       let playback;
       try {
         log(`[twilio-outbound] playing media=${media}`);
