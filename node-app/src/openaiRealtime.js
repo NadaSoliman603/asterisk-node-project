@@ -199,7 +199,7 @@ export class OpenAIRealtimeSession extends EventEmitter {
   /**
    * Ask the model for a response.
    * @param {object} [options]  merged into the `response` field
-   *   e.g. { modalities: ['audio'], instructions: 'read this aloud: ...' }
+   *   e.g. { output_modalities: ['audio'], instructions: 'read this aloud: ...' }
    */
   createResponse(options = {}) {
     this.send({ type: 'response.create', response: options });
@@ -339,7 +339,7 @@ export async function textToSpeech(text, opts = {}) {
           'without adding any commentary, framing, or extra words.',
       });
       session.addUserText(text);
-      session.createResponse({ modalities: ['audio'] });
+      session.createResponse({ output_modalities: ['audio'] });
     } catch (e) {
       finish(e);
     }
