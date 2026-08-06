@@ -360,7 +360,7 @@ export async function startAiCall(ariClient, appName, callerChannel, meta = {}) 
   const callerNumber = callerChannel.caller?.number || '';
   const userId = callerNumber || `anon_${channelId}`;
 
-  log(`[${channelId}] starting AI — caller=${callerNumber || '(anon)'} userId=${userId}`);
+  log(`[${channelId}] starting AI — caller=${callerNumber || '(anon)'} userId=${userId} ariClient=${ariClient} appName=${appName} callerChannel=${callerChannel} meta=${meta} channelId=${channelId} callerNumber=${callerNumber} userId=${userId}`);
 
   let state;
   try {
